@@ -50,7 +50,16 @@ if sys.platform == 'win32': # pragma: no cover
     _gen_time_max = datetime(2999, 12, 31, 23, 59, 59, 999999,
                              tzinfo=timezone.utc).timestamp() - 1
 else:
-    _gen_time_max = datetime.max.replace(tzinfo=timezone.utc).timestamp() - 1
+    _gen_time_max = None
+    for i in (datetime.max.replace(tzinfo=timezone.utc).timestamp() - 1, 2**32-1, 2**31-1):
+        try:
+            datetime.utcfromtimestamp(i)
+        except OverflowError:
+            continue
+        _gen_time_max = i
+        break
+    if not _gen_time_max:
+        raise RuntimeError("Couldn't find a valid maximum value for datetime.utcfromtimestamp")
 
 
 def _to_generalized_time(t):
