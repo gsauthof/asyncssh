@@ -20,7 +20,7 @@
 """
 
 import binascii
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 from pathlib import Path
 import shutil
@@ -1720,17 +1720,15 @@ class _TestPublicKey(TempDirTestCase):
         with self.subTest('Certificate not yet valid'):
             cert = self.privca.generate_x509_user_certificate(
                 self.pubkey, 'OU=user', 'OU=root',
-                valid_after=0xfffffffffffffffe)
+                valid_after='+23d')
 
             with self.assertRaises(ValueError):
                 self.validate_x509(cert)
 
         with self.subTest('Certificate expired'):
-            cert = self.privca.generate_x509_user_certificate(
-                self.pubkey, 'OU=user', 'OU=root', valid_before=1)
-
             with self.assertRaises(ValueError):
-                self.validate_x509(cert)
+                cert = self.privca.generate_x509_user_certificate(
+                    self.pubkey, 'OU=user', 'OU=root', valid_before=datetime(1970, 1, 1, 0, 0, 1, tzinfo=timezone.utc))
 
         with self.subTest('Certificate principal mismatch'):
             cert = self.privca.generate_x509_user_certificate(

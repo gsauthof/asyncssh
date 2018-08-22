@@ -12,6 +12,7 @@
 
 """Unit tests for X.509 certificate handling"""
 
+from datetime import datetime, timezone, timedelta
 import time
 import unittest
 
@@ -40,8 +41,8 @@ class _TestX509(unittest.TestCase):
         cls._pubdata = cls._pubkey.export_public_key('pkcs8-der')
 
     def generate_certificate(self, subject='OU=name', issuer=None,
-                             serial=None, valid_after=0,
-                             valid_before=0xffffffffffffffff, ca=False,
+                             serial=None, valid_after=datetime(1970, 1, 1, 0, 0, 1, tzinfo=timezone.utc),
+                             valid_before=datetime.max.replace(tzinfo=timezone.utc), ca=False,
                              ca_path_len=None, purposes=None,
                              user_principals=(), host_principals=(),
                              hash_alg='sha256', comment=None):
@@ -161,7 +162,7 @@ class _TestX509(unittest.TestCase):
     def test_not_yet_valid_self(self):
         """Test failed validation of not-yet-valid X.509 certificate"""
 
-        cert = self.generate_certificate(valid_after=time.time() + 60)
+        cert = self.generate_certificate(valid_after=datetime.now(tz=timezone.utc) + timedelta(seconds=60))
 
         with self.assertRaises(ValueError):
             cert.validate([cert], None, None, None)
@@ -169,7 +170,7 @@ class _TestX509(unittest.TestCase):
     def test_expired_self(self):
         """Test failed validation of expired X.509 certificate"""
 
-        cert = self.generate_certificate(valid_before=time.time() - 60)
+        cert = self.generate_certificate(valid_before=datetime.now(tz=timezone.utc) - timedelta(seconds=60))
 
         with self.assertRaises(ValueError):
             cert.validate([cert], None, None, None)
@@ -181,7 +182,7 @@ class _TestX509(unittest.TestCase):
 
         int_ca = self.generate_certificate('OU=int', 'OU=root',
                                            ca=True, ca_path_len=0,
-                                           valid_before=time.time() - 60)
+                                           valid_before=datetime.now(tz=timezone.utc) - timedelta(seconds=60))
 
         cert = self.generate_certificate('OU=user', 'OU=int')
 
@@ -192,7 +193,7 @@ class _TestX509(unittest.TestCase):
         """Test failed validation of expired X.509 root CA"""
 
         root_ca = self.generate_certificate('OU=root', ca=True, ca_path_len=1,
-                                            valid_before=time.time() - 60)
+                                            valid_before=datetime.now(tz=timezone.utc) - timedelta(seconds=60))
 
         int_ca = self.generate_certificate('OU=int', 'OU=root',
                                            ca=True, ca_path_len=0)

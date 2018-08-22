@@ -13,7 +13,7 @@
 """SSH asymmetric encryption handlers"""
 
 import binascii
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import os
 from pathlib import Path, PurePath
 import re
@@ -58,6 +58,9 @@ _certificate_version_map = {}
 _pem_map = {}
 _pkcs8_oid_map = {}
 
+_datetime_min = datetime(1970, 1, 1, 0, 0, 1, tzinfo=timezone.utc)
+_datetime_max = datetime.max.replace(tzinfo=timezone.utc)
+
 _abs_date_pattern = re.compile(r'\d{8}')
 _abs_time_pattern = re.compile(r'\d{14}')
 _rel_time_pattern = re.compile(r'(?:(?P<weeks>[+-]?\d+)[Ww]|'
@@ -82,27 +85,30 @@ def _parse_time(t):
     """Parse a time value"""
 
     if isinstance(t, int):
-        return t
+        return datetime.utcfromtimestamp(t).replace(tzinfo=timezone.utc)
     elif isinstance(t, float):
-        return int(t)
+        return datetime.utcfromtimestamp(t).replace(tzinfo=timezone.utc)
     elif isinstance(t, datetime):
-        return int(t.timestamp())
+        if t.tzinfo:
+            return t
+        else:
+            return t.astimezone()
     elif isinstance(t, str):
         if t == 'now':
-            return int(time.time())
+            return datetime.now(tz=timezone.utc)
 
         match = _abs_date_pattern.fullmatch(t)
         if match:
-            return int(datetime.strptime(t, '%Y%m%d').timestamp())
+            return datetime.strptime(t, '%Y%m%d').astimezone()
 
         match = _abs_time_pattern.fullmatch(t)
         if match:
-            return int(datetime.strptime(t, '%Y%m%d%H%M%S').timestamp())
+            return datetime.strptime(t, '%Y%m%d%H%M%S').astimezone()
 
         match = _rel_time_pattern.fullmatch(t)
         if match:
             delta = {k: int(v) for k, v in match.groupdict(0).items()}
-            return int(time.time() + timedelta(**delta).total_seconds())
+            return datetime.now(tz=timezone.utc) + timedelta(**delta)
 
     raise ValueError('Unrecognized time value')
 
@@ -382,8 +388,8 @@ class SSHKey:
         return result
 
     def generate_user_certificate(self, user_key, key_id, version=1,
-                                  serial=0, principals=(), valid_after=0,
-                                  valid_before=0xffffffffffffffff,
+                                  serial=0, principals=(), valid_after=_datetime_min,
+                                  valid_before=_datetime_max,
                                   force_command=None, source_address=None,
                                   permit_x11_forwarding=True,
                                   permit_agent_forwarding=True,
@@ -494,8 +500,8 @@ class SSHKey:
                                           valid_before, cert_options, comment)
 
     def generate_host_certificate(self, host_key, key_id, version=1,
-                                  serial=0, principals=(), valid_after=0,
-                                  valid_before=0xffffffffffffffff,
+                                  serial=0, principals=(), valid_after=_datetime_min,
+                                  valid_before=_datetime_max,
                                   comment=()):
         """Generate a new SSH host certificate
 
@@ -549,8 +555,8 @@ class SSHKey:
 
     def generate_x509_user_certificate(self, user_key, subject, issuer=None,
                                        serial=None, principals=(),
-                                       valid_after=0,
-                                       valid_before=0xffffffffffffffff,
+                                       valid_after=_datetime_min,
+                                       valid_before=_datetime_max,
                                        purposes='secureShellClient',
                                        hash_alg='sha256', comment=()):
         """Generate a new X.509 user certificate
@@ -621,8 +627,8 @@ class SSHKey:
 
     def generate_x509_host_certificate(self, host_key, subject, issuer=None,
                                        serial=None, principals=(),
-                                       valid_after=0,
-                                       valid_before=0xffffffffffffffff,
+                                       valid_after=_datetime_min,
+                                       valid_before=_datetime_max,
                                        purposes='secureShellServer',
                                        hash_alg='sha256', comment=()):
         """Generate a new X.509 host certificate
@@ -691,8 +697,8 @@ class SSHKey:
                                                hash_alg, comment)
 
     def generate_x509_ca_certificate(self, ca_key, subject, issuer=None,
-                                     serial=None, valid_after=0,
-                                     valid_before=0xffffffffffffffff,
+                                     serial=None, valid_after=_datetime_min,
+                                     valid_before=_datetime_max,
                                      ca_path_len=None, hash_alg='sha256',
                                      comment=()):
         """Generate a new X.509 CA certificate
@@ -1533,8 +1539,8 @@ class SSHOpenSSHCertificateV01(SSHOpenSSHCertificate):
 
         return b''.join((String(os.urandom(32)), key.encode_ssh_public(),
                          UInt64(serial), UInt32(cert_type), String(key_id),
-                         String(principals), UInt64(valid_after),
-                         UInt64(valid_before), String(options),
+                         String(principals), UInt64(int(valid_after.timestamp())),
+                         UInt64(int(valid_before.timestamp())), String(options),
                          String(extensions), String('')))
 
     @classmethod
